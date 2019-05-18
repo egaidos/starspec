@@ -66,7 +66,7 @@ def main():
     if specfile == None: specfile =  '../Data/uvm_spec_new.h5' #'../Data/ld_spec.h5' # database for spectroscopy
     if photofile == None: photofile = '../PHOTOMETRY/photometry_uvm_20180703.pkl'   # '../PHOTOMETRY/photometry_LD.pkl' # database for photometry
     if loopiter == None: loopiter = 10 # number of over-all fitting loops
-    if model_iter == None: model_iter = 10 # number of spectral model loops in big loop 
+    if model_iter == None: model_iter = 30 # number of spectral model loops in big loop 
     if photo_iter == None: photo_iter = 20 # number of photometry fitting loops in big loop
     if nbest == None: nbest = 27 # number of best-fit models to select to build subgrid
     if wave_max == None: wave_max = 6.0 # wavelength to extend to do photometry
@@ -78,7 +78,7 @@ def main():
         ebv_err = float(ebv[1])
         ebv = float(ebv[0])
 
-    preiter = 50 # photometric fitting iterations before sub-grid is build
+    preiter = 5#0 # photometric fitting iterations before sub-grid is build
 
     err_iter = 30 # number of Monte Carlos to generate errors
     catalogfile = 'test.pkl' #'uvm_catalog.pkl'
@@ -104,18 +104,6 @@ def main():
     flux = flux[np.argsort(wave)]
     err = err[np.argsort(wave)]
     wave = wave[np.argsort(wave)]
-    which = (err/flux < 0.1)
-    #plt.plot(wave[which],flux[which],'black')
-    #plt.ylim([0,2*np.median(flux)])
-    #plt.xlim([0.4,2.5])
-    #plt.xscale('log')
-    #plt.xlabel('microns')
-    #plt.savefig('epic2481spec.png')
-    #plt.show(block=True)
-
-
-    #plt.plot(wave,flux)
-    #plt.pause(2)
 
     print('Splice points = ', wave_splice_snifs,wave_splice_spex)
     if (wave_splice_snifs == 0.):
@@ -144,7 +132,6 @@ def main():
                 bands.append(observation.bandpass)
                 mag.append(observation.mag)
                 mag_err.append(observation.mag_err)
-            print(mag_err)
         
         mag_synth = []
         mag_synth_err = []
@@ -157,10 +144,13 @@ def main():
         print('Initial Metallicity = ', feh, '+/-',feh_err)
 
         ##### experimental ######   first does a photometric fit
+        print('performing initial fit to photometry...')
         photparams = np.array([1.,1.,1.,1.]) # initial photometric adjustment parameters
+
         photo_result = minimize(fit_photometry,photparams,args=(wave_splice_snifs,wave_splice_spex,wave,flux,err,photsysfile,systems,bands,mag,mag_err,ebv),method='Nelder-Mead',options={'maxiter':preiter})
         photparams = photo_result.x
         fluxgrid, errgrid = warp_spec(photparams,wave_splice_snifs,wave_splice_spex,wave,flux,err) # alter the spectrum accordingly
+
         #######################
 
         filepath = Path(subgridfile)
@@ -220,10 +210,9 @@ def main():
 
             # fit model to adjusted spectrum
             if (iter == 0):
-                print(bestfit_params)
-                print(isv)
                 model_result = minimize(fit_spectrum,bestfit_params,args=(wave,flux,err,snr,wave_splice_snifs,wave_splice_spex,photparams,filter,gridparams,grid,feh,feh_err,ebv),method='Nelder-Mead',options={'maxiter':model_iter, 'initial_simplex':isv})
                 chi2min = model_result.fun
+                print('min chi2 = ',chi2min)
             else:
                 bestfit_params_try = bestfit_params[:]
                 model_result_try = minimize(fit_spectrum,bestfit_params_try,args=(wave,fluxmod_short,errmod_short,snr,wave_splice_snifs,wave_splice_spex,photparams,filter,gridparams,grid,feh,feh_err,ebv),method='Nelder-Mead',options={'maxiter':model_iter})
@@ -252,16 +241,26 @@ def main():
 
             # patch and extend spectrum with best-fit model
             patched_spectrum, patched_err, ratio = patch_spectrum(bestfit_params,wave,flux,err,snr,filter,gridparams,grid)
+
             wave_append = np.array(max(wave) + (wave_max - max(wave))*np.arange(nappend)/(1.*nappend))
             flux_append, err_append = append_spectrum(gridfile,teffgrid,logggrid,metalgrid,rv_model,ratio,bestfit_params,wave_append)
+
+
             wave_whole = np.concatenate([wave,wave_append])
             flux_whole = np.concatenate([patched_spectrum,flux_append])
             err_whole = np.concatenate([patched_err,err_append])
-            
+
             indices = np.argsort(wave_whole)
             wave_whole = wave_whole[indices]
             flux_whole = flux_whole[indices]
             err_whole = err_whole[indices]
+
+            
+            plt.close()
+            plt.plot(wave,flux)
+            plt.plot(wave_whole,flux_whole)
+            print('This is the spectrum.....(window will close soon)')
+            plt.pause(2)
             
             # fit spectrum to photometry
 
@@ -359,7 +358,6 @@ def main():
         print('Teff = ',bestfit_params[0], '+/-',np.std(teffmc))
         print('log g = ',bestfit_params[1], '+/-',np.std(loggmc))
         print('[Fe/H] = ',bestfit_params[2], '+/-',np.std(metalmc))
-        #print('E(B-V) = ',bestfit_params[3], '+/-',np.std(ebvmc)) # EXPERIMENTAL
         print('[Fe/H] from SpeX  = ', feh, '+/-',feh_err)
         print('Systematic error in photometry = ',sys_err)
         # add or update information to catalog file and pickle
@@ -411,7 +409,7 @@ def main():
             mags_syn_err.append(np.asscalar(magsynth_err))
             waveb.append(np.asscalar(waveband))
 
-        # normalize flux model for plotting   DELETE BECAUSE REDUNDANT
+        
         fluxmod, errmod = warp_spec(photparams_best,wave_splice_snifs,wave_splice_spex,wave,flux,err) # alter the spectrum accordingly
         
 

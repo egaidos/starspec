@@ -42,7 +42,6 @@ def interpolate_spectrum(parameters,gridparams,grid,wave):
     import numpy as np
 
     spectrum = wave*0.
-    print(parameters)
     for n in np.arange(len(wave)):
         spec_interp = RegularGridInterpolator(gridparams,grid[:,:,:,n],bounds_error=False)
         #spec_interp = RegularGridInterpolator(gridparams,grid[:,:,:,n],bounds_error=True)
@@ -165,7 +164,7 @@ def build_grid(gridfile,nbest,res,wave,ebv,flux,err,filter,wave_rv,flux_rv,feh,f
         #plt.show(block=True)
         chisqval = np.sum(sig**2)*(1 + ((feh-metal[imodel])/feh_err)**2) # disabled for now 
         chisq.append(chisqval)
-        print(teff[imodel],logg[imodel],metal[imodel],av_best,chisqval)
+        print('Model params =',teff[imodel],logg[imodel],metal[imodel],av_best,chisqval)
     
     indices = np.argsort(chisq)
     bestmodels = indices[0:nbest]
@@ -174,9 +173,9 @@ def build_grid(gridfile,nbest,res,wave,ebv,flux,err,filter,wave_rv,flux_rv,feh,f
     teffbest = np.sort(np.unique(teff[bestmodels]))
     loggbest = np.sort(np.unique(logg[bestmodels]))
     metalbest = np.sort(np.unique(metal[bestmodels]))
-    avmodels = np.array(avmodels)
-    avbest = np.sort(np.unique(avmodels[bestmodels]))
-    print('Best Av = ',avmodels[indices[0]])
+    #avmodels = np.array(avmodels)
+    #avbest = np.sort(np.unique(avmodels[bestmodels]))
+    #print('Best Av = ',avmodels[indices[0]])
 
     bestparams = [teff[indices[0]],logg[indices[0]],metal[indices[0]]]
     print('Best parameters = ',bestparams)
@@ -230,13 +229,7 @@ def build_grid(gridfile,nbest,res,wave,ebv,flux,err,filter,wave_rv,flux_rv,feh,f
         #gridflux = model_interp(wave)*10**(-0.4*extinct_all*np.asscalar(avmodels[imodel])) # apply extinction at this step for consistency with the chi-squared minimization
         gridflux = model_interp(wave)
         grid[i,j,k,:] = gridflux
-        
-        print(imodel,np.asscalar(avmodels[imodel]),teff[imodel],logg[imodel],metal[imodel])
- 
-       #plt.plot(wave,gridflux,'k')
-        #plt.show()
-        #model_compare.append(grid[i,j,k,:])
-        
+
     return teffbest, loggbest, metalbest, grid, rvbest, bestparams
 
 ###################################################################
@@ -255,14 +248,19 @@ def build_spectrum(specfile,starname,nstar): # build spectrum of star from SNIFS
         wave_blue = np.array(f['SNIFSB_WAVE'][nstar])/10000.
         flux_blue = np.array(f['SNIFSB_FLUX'][nstar])
         err_blue = np.array(f['SNIFSB_ERROR'][nstar])
+        if (np.median(err_blue) > np.median(flux_blue)):  # checks for someone taking the square root of the error
+            err_blue = err_blue**2 
         wave_red = np.array(f['SNIFSR_WAVE'][nstar])/10000.
         flux_red = np.array(f['SNIFSR_FLUX'][nstar])
         err_red = np.sqrt(np.array(f['SNIFSR_ERROR'][nstar]))
-        #print(np.median(err_red))
+        if (np.median(err_red) > np.median(flux_red)):
+            err_red = err_red**2 
         wave_spex = np.array(f['SPEX_WAVE'][nstar])
         flux_spex = np.array(f['SPEX_FLUX'][nstar])
         err_spex = np.array(f['SPEX_ERROR'][nstar])
-
+        if (np.median(err_spex) > np.median(flux_spex)):
+            err_spex = err_spex**2 
+        
     if extension == "pkl":
         
         f = pd.read_pickle('../Data/'+specfile)
@@ -275,7 +273,6 @@ def build_spectrum(specfile,starname,nstar): # build spectrum of star from SNIFS
         wave_spex = np.array(f[starname].spex.wave)
         flux_spex = np.array(f[starname].spex.flux)
         err_spex = np.array(f[starname].spex.err)
-        #print(flux_blue.shape,err_blue.shape)
 
     goodspex = np.logical_not(np.isnan(flux_spex) & np.isnan(err_spex))
     goodblue = np.logical_not(np.isnan(flux_blue) & np.isnan(err_blue))
@@ -374,9 +371,7 @@ def build_spectrum(specfile,starname,nstar): # build spectrum of star from SNIFS
             wave_snifs_over_spex = wave.compress(wave > np.min(wave_spex))
             flux_snifs_over_spex = flux.compress(wave > np.min(wave_spex))
             interp_overlap = interp1d(wave_spex,flux_spex,kind='linear')
-            #print(min(wave_spex),max(wave_spex))
             wave_spex_over_snifs = wave_spex.compress(wave_spex < np.max(wave))
-            #print(min(wave_snifs_over_spex),max(wave_snifs_over_spex))
             flux_spex_over_snifs = interp_overlap(wave_snifs_over_spex)
             ratio = np.median(flux_snifs_over_spex/flux_spex_over_snifs)
             # correct spex
@@ -456,7 +451,7 @@ def resolution(wave,flux,err,waverange,filter):    # determines spectral resolut
 
     max_wave = np.max(waverange)*(1 + 2*rvmax/c)
     min_wave = np.min(waverange)*(1 + 2*rvmin/c)
-    which = [(wave > min_wave) & (wave < max_wave)]
+    which = ((wave > min_wave) & (wave < max_wave))
     wave_template = wave[which]
     flux_template = flux[which]
     err_template = err[which]
@@ -464,7 +459,7 @@ def resolution(wave,flux,err,waverange,filter):    # determines spectral resolut
     flux_template = flux_template/smooth_template
     err_template = err_template/smooth_template 
     
-    which = [(wave > np.min(waverange)) & (wave < np.max(waverange))]
+    which = ((wave > np.min(waverange)) & (wave < np.max(waverange)))
     wave_target = wave[which]
     flux_target = flux[which]
     err_target = err[which]
@@ -511,23 +506,17 @@ def fit_spectrum(parameters,wave,flux,err,snr,wave0,wave1,photparams,filter,grid
     flux_model = interpolate_spectrum(parameters,gridparams,grid,wave)
     #flux_model = interpolate_spectrum(parameters[0:3],gridparams,grid,wave)  # EXPERIMENTAL
     #flux_model = flux_model*10**(-0.4*extinction.fm07(wave*10000.,parameters[3])) # EXPERIMENTAL
-    flux_model = apply(fm07(wave*10000,av),flux) # include reddening
+    flux_model = apply(fm07(wave*10000,av),flux_model) # include reddening
     filter_all = filter*(1.*(snr > minsnr))
     
-    print('Number of zeros in flux_model =', np.sum(1*(flux_model == 0.)),' out of ',len(flux_model))
-    print('Number of Nans in flux_model =', np.sum(1*np.isnan(flux_model)),' out of ',len(flux_model))
-    print('Number of Nans in fluxmod =', np.sum(1*np.isnan(fluxmod)),' out of ',len(fluxmod))
     r = fluxmod/flux_model
-    print('Number of Nans in r =', np.sum(1*np.isnan(r)),' out of ',len(r))
     r[np.isnan(r)] = 0.
 
-
     # Overall adjustment
-    which = [(r != 0.) & (filter == 1.) & (np.isfinite(r)) & (np.isnan(r) == False)]
+    which = ((r != 0.) & (filter == 1.) & (np.isfinite(r)) & (np.isnan(r) == False))
     r0 = np.median(r[which])
-    print(parameters)
-    print(photparams)
-    print(r0,np.median(fluxmod),np.median(flux_model),np.median(flux))
+    print('Model params = ',parameters)
+    print('Phot params = ',photparams)
     flux_model = r0*flux_model
     
     var = (filter_all*(fluxmod-flux_model)/errmod)**2
@@ -563,6 +552,7 @@ def fit_spectrum(parameters,wave,flux,err,snr,wave0,wave1,photparams,filter,grid
 def patch_spectrum(parameters,wave,flux,err,snr,filter,gridparams,grid): # patch spectrum with best-fit model
 
     import numpy as np
+    import matplotlib.pyplot as plt
     
     print('Patching spectrum....')
 
@@ -574,15 +564,22 @@ def patch_spectrum(parameters,wave,flux,err,snr,filter,gridparams,grid): # patch
     patched_spectrum = np.array(flux[:])
     patched_err = np.array(err[:])
         
-    model_good = bestfit_spectrum.compress((snr > minsnr) & (filter == 1.))
-    flux_good = flux.compress((snr > minsnr) & (filter == 1.))
+    goodparts = ((snr > minsnr) & (filter == 1.))
+    model_good = bestfit_spectrum[goodparts]
+    flux_good = flux[goodparts]
     
     r = flux_good/model_good
+
     r[np.isnan(r)] = 0.
-    rmed = np.median(r)
+    #plt.close()
+    #plt.plot(wave[goodparts],r)
+    #plt.show(block=True)
+    rmed = np.nanmedian(r)
     bestfit_spectrum = bestfit_spectrum*rmed
-    patched_spectrum[((filter == 0.) | (snr < snr_patch))] = bestfit_spectrum[((filter == 0.) | (snr < snr_patch))]
-    patched_err[((filter == 0.) | (snr < snr_patch))] = 0. # for moment setting to zero, should replace with error due to uncertainty in parameters
+    the_patch = (((filter == 0.) | (snr < snr_patch)) & (bestfit_spectrum > 0.))
+    patched_spectrum[the_patch] = bestfit_spectrum[the_patch]
+    err_patch = np.median(err[the_patch]) # use median in the patch; should do something better
+    patched_err[the_patch] = err_patch 
 
     return patched_spectrum, patched_err, rmed
 
@@ -612,7 +609,7 @@ def build_bandpass(photsysfile,sys_select,band_select,wavelength):
 
     wavefilter = wave.compress((systems == sys_select) & (bands == band_select))
     transfilter = trans.compress((systems == sys_select) & (bands == band_select))
-    zeropoint = zeropt.compress((systems == sys_select) & (bands == band_select))
+    zeropoint = np.asscalar(zeropt.compress((systems == sys_select) & (bands == band_select)))
 
     wavefilter = wavefilter[0]
     transfilter = transfilter[0]
@@ -643,7 +640,6 @@ def synth_mag(wave,flux,err,transmission,zeropoint):  # synthesize photometry fr
         err_tot = np.sum(vave*dwave)/np.sum(tave*dwave)
     mag = -2.5*np.log10(flux_tot/zeropoint)
     mag_err = err_tot/flux_tot*2.5/np.log(10.)
-#    print(mag,mag_err,err_tot,flux_tot,np.sum(vave*dwave),np.sum(tave*dwave),np.sum(var*dwave))
 
     return mag, mag_err
 
@@ -779,10 +775,10 @@ def fit_photometry(param,wave0,wave1,wave,flux,err,photsysfile,systems,bands,mag
     import numpy as np
     from extinction import fm07,apply
 
-    av = 3.1*ebv
-    fluxred = apply(fm07(wave*10000,av),flux)
-    err_red = fluxred/flux*err
-    fluxmod, errmod = warp_spec(param,wave0,wave1,wave,fluxred,err_red)
+    #av = 3.1*ebv
+    #fluxred = apply(fm07(wave*10000,av),flux)
+    #err_red = fluxred/flux*err
+    fluxmod, errmod = warp_spec(param,wave0,wave1,wave,flux,err)
     
     chi2 = 0.
     mags_syn = []
@@ -795,6 +791,7 @@ def fit_photometry(param,wave0,wave1,wave,flux,err,photsysfile,systems,bands,mag
         mags_syn_err.append(np.asscalar(magsynth_err))
         waveb.append(np.asscalar(waveband))
         chi2 = chi2 + ((mag - magsynth)**2/(mag_err**2 + magsynth_err**2))
+
     dmag = np.array(mags)-np.array(mags_syn)
     dmag_err = np.sqrt(np.array(mags_syn_err)**2 + np.array(mag_errs)**2)
     plt.plot(waveb,dmag,'ko')
@@ -905,7 +902,7 @@ def irwater(wavevac,flux):
 
 #############################################
                         
-def metallicity(wave, flux, flux_err, rv_nom):
+def metallicity(wave,flux,flux_err,rv_nom):
               
     c = 300000.
         
